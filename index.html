@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <title>API B Claude</title>
+    <meta name="description" content="A private Claude chat that runs in your browser with your own API key. Your history stays on your device." />
+    <meta name="theme-color" content="#f6f6f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111216" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      // Apply the saved theme before first paint.
+      try {
+        var s = JSON.parse(localStorage.getItem("abc.settings") || "{}");
+        if (s.theme === "light" || s.theme === "dark") document.documentElement.dataset.theme = s.theme;
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app" class="app"></div>
+    <noscript>This app needs JavaScript.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
