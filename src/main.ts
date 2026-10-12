@@ -3,7 +3,7 @@ import "@fontsource-variable/jetbrains-mono";
 import "./styles.css";
 
 import type Anthropic from "@anthropic-ai/sdk";
-import { createClient, describeError, runTurn, verifyKey } from "./api";
+import { createClient, createDemoClient, describeError, runTurn, verifyKey } from "./api";
 import { attachmentUrl, MAX_ATTACHMENTS, readAttachment } from "./attachments";
 import {
   assistantText,
@@ -43,6 +43,25 @@ interface State {
   usage: UsageRecord[];
   overrideLimitOnce: boolean;
   editingId: string | null;
+  /** Demo mode: sample replies generated in the browser, nothing saved or charged. */
+  demo: boolean;
+}
+
+const DEMO_FLAG = "abc.demo";
+function readDemoFlag(): boolean {
+  try {
+    return sessionStorage.getItem(DEMO_FLAG) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeDemoFlag(on: boolean): void {
+  try {
+    if (on) sessionStorage.setItem(DEMO_FLAG, "1");
+    else sessionStorage.removeItem(DEMO_FLAG);
+  } catch {
+    /* ignore */
+  }
 }
 
 const state: State = {
@@ -58,7 +77,15 @@ const state: State = {
   usage: [],
   overrideLimitOnce: false,
   editingId: null,
+  demo: false,
 };
+// A real key always wins over a leftover demo flag.
+state.demo = !state.key && readDemoFlag();
+
+/** True when the chat screen should show: a real key, or demo mode. */
+function connected(): boolean {
+  return Boolean(state.key) || state.demo;
+}
 
 const app = document.getElementById("app")!;
 
@@ -183,8 +210,15 @@ const composer: HTMLFormElement = h(
   ],
 );
 const limitBanner = h("div", { class: "limit-banner", hidden: true });
+const demoBanner = h("div", { class: "limit-banner", hidden: true }, [
+  h("div", { class: "notice demo-note" }, [
+    h("span", { text: "Demo mode: sample replies, not from Claude. Nothing is saved or charged." }),
+    h("button", { type: "button", class: "btn", text: "Connect a key", on: { click: () => openSettings("key") } }),
+    h("button", { type: "button", class: "btn btn-ghost", text: "Leave demo", on: { click: () => leaveDemo() } }),
+  ]),
+]);
 const composerHint = h("p", { class: "composer-hint" });
-const composerWrap = h("div", { class: "composer-wrap" }, [limitBanner, composer, composerHint]);
+const composerWrap = h("div", { class: "composer-wrap" }, [demoBanner, limitBanner, composer, composerHint]);
 
 const main = h("main", { class: "main" }, [topbar, threadWrap, composerWrap]);
 const scrim = h("div", { class: "scrim", on: { click: () => app.classList.remove("nav-open") } });
@@ -244,7 +278,7 @@ function newConversation(): Conversation {
 }
 
 async function persist(conv: Conversation): Promise<void> {
-  if (!conv.started) return;
+  if (!conv.started || state.demo) return;
   try {
     await store.putConversation(conv);
   } catch (err) {
@@ -330,7 +364,8 @@ function renderUsageMini(): void {
   usageMini.replaceChildren(...row("Today", status.todayUSD, dailyUSD), ...row("This month", status.monthUSD, monthlyUSD));
   usageMini.setAttribute("aria-label", `Usage: ${formatUSD(status.todayUSD)} today, ${formatUSD(status.monthUSD)} this month. Open usage details.`);
   keyDot.classList.toggle("ok", Boolean(state.key));
-  keyDot.title = state.key ? "API key connected" : "No API key";
+  keyDot.classList.toggle("demo", state.demo);
+  keyDot.title = state.key ? "API key connected" : state.demo ? "Demo mode" : "No API key";
 }
 
 // ---------- topbar ----------
@@ -339,7 +374,7 @@ function renderTopbar(): void {
   titleSlot.replaceChildren();
   topMeta.replaceChildren();
   const conv = state.current;
-  if (!state.key || !conv) {
+  if (!connected() || !conv) {
     titleSlot.append(h("span", { class: "title-btn", text: "API B Claude" }));
     return;
   }
@@ -365,7 +400,11 @@ function renderTopbar(): void {
       meter,
       h("span", { text: `${formatTokens(used)} / ${formatTokens(model.contextWindow)}` }),
     ]),
-    h("span", { class: "cost", title: "Estimated cost of this chat", text: `${cost.estimated ? "≈ " : ""}${formatUSD(cost.costUSD)}` }),
+    h("span", {
+      class: "cost",
+      title: state.demo ? "Demo chats are free; this is what a real chat might cost" : "Estimated cost of this chat",
+      text: state.demo ? `example ${formatUSD(cost.costUSD)}` : `${cost.estimated ? "≈ " : ""}${formatUSD(cost.costUSD)}`,
+    }),
     iconButton("download", "Export chat as Markdown", () => exportConversation(conv)),
     iconButton("trash", "Delete chat", () => void removeConversation(conv)),
   );
@@ -440,7 +479,11 @@ function renderAssistant(m: ChatMessage, isLast: boolean): HTMLElement {
     const lastBlock = index === blocks.length - 1;
     switch (block.type) {
       case "text":
-        textRun += block.text + citationLinks(block, sources);
+        {
+          // Put source numbers before any trailing line breaks so they don't break the next paragraph or heading.
+          const links = citationLinks(block, sources);
+          textRun += links ? block.text.replace(/\s*$/, (tail) => links + tail) : block.text;
+        }
         return;
       case "thinking": {
         flushText();
@@ -566,7 +609,9 @@ function renderAssistant(m: ChatMessage, isLast: boolean): HTMLElement {
       if (cachePct) foot.append(h("span", { title: "Share of the prompt served from the prompt cache", text: `${cachePct}% cached` }));
       if (u.webSearches) foot.append(h("span", { text: `${u.webSearches} search${u.webSearches === 1 ? "" : "es"}` }));
       foot.append(
-        h("span", { title: u.estimated ? "Estimate" : "Cost at API list prices", text: `${u.estimated ? "≈ " : ""}${formatUSD(u.costUSD)}` }),
+        state.demo
+          ? h("span", { title: "Demo replies are free; this shows what a real reply might cost", text: `example cost ${formatUSD(u.costUSD)}` })
+          : h("span", { title: u.estimated ? "Estimate" : "Cost at API list prices", text: `${u.estimated ? "≈ " : ""}${formatUSD(u.costUSD)}` }),
       );
     }
     art.append(foot);
@@ -741,6 +786,10 @@ function renderWelcome(): HTMLElement {
         h("li", { text: "Paste it below. It is stored only in this browser and sent only to api.anthropic.com." }),
       ]),
       form,
+      h("div", { class: "demo-cta" }, [
+        h("span", { text: "Just want to look around first?" }),
+        h("button", { type: "button", class: "btn", text: "Try the free demo", on: { click: () => enterDemo() } }),
+      ]),
       h("p", {
         class: "fine",
         text: "Unofficial client. Nothing you type here appears in your claude.ai history. Anyone who can use this browser profile can use the remembered key, so untick Remember on shared computers.",
@@ -751,7 +800,8 @@ function renderWelcome(): HTMLElement {
 
 function renderThread(): void {
   threadInner.replaceChildren();
-  if (!state.key) {
+  demoBanner.hidden = !state.demo;
+  if (!connected()) {
     threadInner.append(renderWelcome());
     composerWrap.hidden = true;
     return;
@@ -800,6 +850,12 @@ function syncComposer(): void {
   const model = conv?.model ?? state.settings.defaultModel;
   modelSelect.value = isKnownModel(model) ? model : MODELS[0].id;
   effortSelect.value = conv?.effort ?? state.settings.defaultEffort;
+  // Short labels on narrow screens so the picker isn't cut off.
+  const compact = window.matchMedia("(max-width: 560px)").matches;
+  for (const option of effortSelect.options) {
+    const e = EFFORTS.find((x) => x.id === option.value);
+    if (e) option.text = compact ? e.label : `${e.label} effort`;
+  }
   const web = conv?.webSearch ?? state.settings.webSearchDefault;
   webBtn.setAttribute("aria-pressed", String(web));
   const locked = Boolean(conv?.started);
@@ -1061,6 +1117,7 @@ async function runAssistant(conv: Conversation): Promise<void> {
 }
 
 async function recordUsage(conv: Conversation, m: ChatMessage): Promise<void> {
+  if (state.demo) return; // demo replies cost nothing
   const u = m.usage;
   if (!u || (!u.inputTokens && !u.outputTokens && !u.cacheReadTokens && !u.cacheWriteTokens)) return;
   const record: UsageRecord = {
@@ -1153,12 +1210,39 @@ async function copyText(text: string): Promise<void> {
 // ---------- key ----------
 
 function connectKey(key: string, remember: boolean): void {
+  const wasDemo = state.demo;
   store.saveApiKey(key, remember);
   state.key = { key, remembered: remember };
   state.client = createClient(key);
+  if (wasDemo) {
+    // Demo chats hold sample replies Claude never wrote, so they can't continue for real.
+    stopStreaming();
+    state.demo = false;
+    writeDemoFlag(false);
+    state.current = null;
+    void loadData().then(renderAll);
+  }
   renderAll();
   textarea.focus();
   toast("Connected. Your key is stored only in this browser.");
+}
+
+function enterDemo(): void {
+  state.demo = true;
+  writeDemoFlag(true);
+  state.client = createDemoClient();
+  state.current = null;
+  renderAll();
+  textarea.focus();
+}
+
+function leaveDemo(): void {
+  stopStreaming();
+  state.demo = false;
+  writeDemoFlag(false);
+  state.client = state.key ? createClient(state.key.key) : null;
+  state.current = null;
+  void loadData().then(renderAll);
 }
 
 function disconnectKey(): void {
@@ -1216,7 +1300,9 @@ function openSettings(initial: SettingsTab = state.key ? "chat" : "key"): void {
     const status = h("p", {
       text: state.key
         ? `Connected with a key ending in ${state.key.key.slice(-4)}${state.key.remembered ? ", remembered on this device." : ", for this browser session only."}`
-        : "No key connected.",
+        : state.demo
+          ? "Demo mode is on: replies are free samples. Connect a key below to chat with the real Claude."
+          : "No key connected.",
     });
     const save: HTMLButtonElement = h("button", {
       type: "button",
@@ -1616,6 +1702,8 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+window.matchMedia("(max-width: 560px)").addEventListener("change", () => syncComposer());
+
 window.addEventListener("beforeunload", (e) => {
   if (state.streaming) e.preventDefault();
 });
@@ -1623,9 +1711,10 @@ window.addEventListener("beforeunload", (e) => {
 async function start(): Promise<void> {
   applyTheme();
   if (state.key) state.client = createClient(state.key.key);
+  else if (state.demo) state.client = createDemoClient();
   await loadData();
   renderAll();
-  if (state.key && window.matchMedia("(min-width: 861px)").matches) textarea.focus();
+  if (connected() && window.matchMedia("(min-width: 861px)").matches) textarea.focus();
 }
 
 void start();

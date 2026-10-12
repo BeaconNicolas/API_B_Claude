@@ -16,6 +16,10 @@ A private Claude chat website you open from a link. It talks to the Claude API w
 - **Safety net**: if a model declines a request, the API retries it on another model automatically (server-side fallbacks), and the app tells you when that happens.
 - Light and dark themes, works on phones, keyboard friendly (Enter to send, Shift+Enter for a new line, Esc to stop, Ctrl/Cmd+Shift+O for a new chat).
 
+## Try it for free (demo mode)
+
+On the welcome screen, click **Try the free demo**. You get the full interface with sample replies generated in your browser: no API key, no network calls, no cost. Demo chats aren't saved. Click **Connect a key** whenever you want to chat with the real Claude.
+
 ## About subscriptions, limits and tokens
 
 A Claude Pro or Max subscription only covers claude.ai and Claude Code. It can't be used by other apps, and its limits can't be read or shared. So this site uses an **API key**, which is billed pay-as-you-go to your Claude Console account, separately from any subscription. To keep spending under control:

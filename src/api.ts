@@ -10,6 +10,7 @@ import {
   addUsage,
   emptyUsage,
 } from "./conversation";
+import { demoFetch } from "./demo";
 import type { AssistantSegment, ContentBlock, Conversation, RateLimitSnapshot, StopDetails, UsageSummary } from "./types";
 
 export function createClient(apiKey: string): Anthropic {
@@ -18,6 +19,16 @@ export function createClient(apiKey: string): Anthropic {
     // The key is the user's own, typed into this page and sent only to api.anthropic.com.
     dangerouslyAllowBrowser: true,
     maxRetries: 2,
+  });
+}
+
+/** A client whose requests are answered in the browser by demo mode; nothing leaves the page. */
+export function createDemoClient(): Anthropic {
+  return new Anthropic({
+    apiKey: "demo-mode",
+    dangerouslyAllowBrowser: true,
+    maxRetries: 0,
+    fetch: demoFetch,
   });
 }
 

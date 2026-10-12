@@ -511,6 +511,10 @@ svg.icon {
   background: var(--ok);
 }
 
+.key-dot.demo {
+  background: var(--warn);
+}
+
 /* ---------- Main ---------- */
 .main {
   display: flex;
@@ -1171,6 +1175,43 @@ svg.icon {
 .welcome form {
   display: grid;
   gap: 12px;
+}
+
+.demo-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.demo-note {
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.demo-note > span {
+  flex: 1 1 260px;
+}
+
+.demo-note .btn {
+  flex: none;
+}
+
+.demo-note .btn:first-of-type {
+  margin-left: auto;
+}
+
+.demo-note .btn + .btn {
+  margin-left: 0;
 }
 
 .welcome .fine {
